@@ -55,16 +55,16 @@ func _quiz(i: int) -> void:
 	for b in quiz_btns:
 		b.disabled = true
 		b.modulate = Color(1, 1, 1, 0.4)
-	quiz_btns[2].modulate = UI.hot(UI.ACCENT, 1.5)
+	for b in quiz_btns:
+		b.visible = false
 	if i == 2:
 		goals[2] = true
 		sfx("ok")
-		burst(quiz_btns[2].position + quiz_btns[2].size / 2.0, UI.ACCENT, 26)
+		burst(Vector2(300, 156), UI.ACCENT, 26)
 		quiz_l.text = "Right: 2,692,537 calls. With caching, fib(30) takes 59."
 		quiz_l.add_theme_color_override("font_color", UI.ACCENT)
 	else:
 		sfx("bad")
-		quiz_btns[i].modulate = UI.hot(UI.BAD, 1.3)
 		quiz_l.text = "It is 2,692,537 calls. 59 is the count WITH caching: same answer, 45,000x less work."
 		quiz_l.add_theme_color_override("font_color", UI.WARN)
 	_award()

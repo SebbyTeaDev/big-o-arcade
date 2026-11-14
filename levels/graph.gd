@@ -3,9 +3,9 @@ extends "res://levels/level_base.gd"
 
 const GW := 32
 const GH := 15
-const CS := 34.0
+const CS := 33.0
 const X0 := 96.0
-const Y0 := 162.0
+const Y0 := 178.0
 const ALG := ["BFS", "DFS", "Dijkstra"]
 const ALG_COL := [UI.BLUE, UI.PURPLE, UI.ACCENT]
 const ALG_NOTE := [

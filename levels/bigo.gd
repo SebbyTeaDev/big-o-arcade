@@ -7,34 +7,36 @@ const NAMES := ["constant", "logarithmic", "linear", "linearithmic", "quadratic"
 const COLORS := [UI.ACCENT, UI.BLUE, UI.INK, UI.PURPLE, UI.WARN, UI.BAD]
 const CHART := Rect2(720, 124, 520, 232)
 
+const Traces = preload("res://traces.gd")
+
 const QS := [
-	{"code": "for (const x of arr) {\n  console.log(x)\n}", "a": 2,
+	{"trace": "loop", "a": 2,
 		"why": "One pass over n items, constant work per item. n steps."},
-	{"code": "for (const x of arr) {\n  const i = arr.indexOf(x)\n  console.log(i)\n}", "a": 4,
+	{"trace": "indexof", "a": 4,
 		"why": "indexOf is a hidden loop: it scans the array. A scan inside a pass is n x n. Library calls are where most accidental O(n²) lives."},
-	{"code": "function first(arr) {\n  return arr[0]\n}", "a": 0,
+	{"trace": "first", "a": 0,
 		"why": "Jumping to an index is one step whether the array holds 10 items or 10 billion."},
-	{"code": "let lo = 0, hi = sorted.length - 1\nwhile (lo <= hi) {\n  const mid = (lo + hi) >> 1\n  if (sorted[mid] === t) return mid\n  if (sorted[mid] < t) lo = mid + 1\n  else hi = mid - 1\n}", "a": 1,
+	{"trace": "bsearch", "a": 1,
 		"why": "Each trip through the loop halves the remaining range. You can only halve n about log2(n) times."},
-	{"code": "for (let i = 0; i < n; i++) {\n  for (let j = 0; j < n; j++) {\n    grid[i][j] = 0\n  }\n}", "a": 4,
+	{"trace": "nested", "a": 4,
 		"why": "Nested loops multiply: n times around the outside, n times inside each."},
-	{"code": "for (let i = 1; i < n; i *= 2) {\n  work()\n}", "a": 1,
+	{"trace": "doubling", "a": 1,
 		"why": "i doubles each time (1, 2, 4, 8...). Doubling up to n takes as many steps as halving down from n: log n."},
-	{"code": "const seen = new Set(listA)\nfor (const x of listB) {\n  if (seen.has(x)) hits++\n}", "a": 2,
+	{"trace": "sethas", "a": 2,
 		"why": "Set.has is a hash lookup: about 1 step. So this is one pass, O(n). Swap the Set for array.includes and the same code becomes O(n²)."},
-	{"code": "for (let i = 0; i < n; i++) total += a[i]\nfor (let i = 0; i < n; i++) total += b[i]", "a": 2,
+	{"trace": "twoloops", "a": 2,
 		"why": "Loops one AFTER another add: n + n = 2n. Big-O drops constant factors, so 2n is still O(n). Only nesting multiplies."},
-	{"code": "for (const x of arr) {\n  for (let k = 0; k < 10; k++) {\n    poke(x, k)\n  }\n}", "a": 2,
-		"why": "The inner loop runs 10 times no matter how big n is. 10n is O(n). A nested loop is only quadratic if BOTH bounds grow with n."},
-	{"code": "for (let i = 0; i < n; i++) {\n  for (let j = i + 1; j < n; j++) {\n    compare(arr[i], arr[j])\n  }\n}", "a": 4,
+	{"trace": "innerconst", "a": 2,
+		"why": "The inner loop runs 3 times (red, green, blue) however many pixels there are. 3n is O(n). A nested loop is only quadratic if BOTH bounds grow with n."},
+	{"trace": "triangular", "a": 4,
 		"why": "The inner loop shrinks, so the total is n(n-1)/2: every pair once. Half of n² is still O(n²). Constants drop."},
-	{"code": "arr.sort((a, b) => a - b)\nfor (const x of arr) console.log(x)", "a": 3,
+	{"trace": "sortloop", "a": 3,
 		"why": "A good comparison sort costs n log n. The loop after it is only n, and the bigger term wins: O(n log n)."},
-	{"code": "for (const x of queries) {\n  binarySearch(sortedArr, x)\n}", "a": 3,
+	{"trace": "nqueries", "a": 3,
 		"why": "n queries, each costing log n. Multiply: n log n."},
-	{"code": "const out = []\nfor (const x of arr) {\n  if (!out.includes(x)) out.push(x)\n}", "a": 4,
+	{"trace": "dedupe", "a": 4,
 		"why": "includes scans out, which can grow to n items. That is the classic slow de-dupe. A Set makes it O(n)."},
-	{"code": "function fib(n) {\n  if (n < 2) return n\n  return fib(n - 1) + fib(n - 2)\n}", "a": 5,
+	{"trace": "fib", "a": 5,
 		"why": "Each call spawns two more, so the call tree doubles at every level. fib(50) is already billions of calls. Remembering answers (Call Tree level) makes it O(n)."},
 ]
 
@@ -49,6 +51,7 @@ var feedback: Label
 var at1000: Label
 var buttons: Array = []
 var next_btn: Button
+var step_btn: Button
 
 
 func _ready() -> void:
@@ -60,15 +63,29 @@ func _ready() -> void:
 	feedback = UI.label(self, "", Vector2(40, 494), 17, UI.INK, 640)
 	at1000 = UI.label(self, "", Vector2(720, 626), 17, UI.WARN, 340)
 	next_btn = UI.button(self, "Next", Vector2(1080, 646), Vector2(160, 48), _next, 18, tint)
+	step_btn = UI.button(self, "Step through it", Vector2(500, 314), Vector2(170, 34), _open_stepper, 14, tint)
 	_show()
+
+
+func _open_stepper() -> void:
+	open_code([QS[qi]["trace"]], answered >= 0)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	super._unhandled_key_input(event)
+	if event is InputEventKey and event.pressed and overlay == null and not over:
+		var k: int = event.keycode - KEY_1
+		if k >= 0 and k < OPTS.size():
+			_answer(k)
 
 
 func _show() -> void:
 	answered = -1
 	var q: Dictionary = QS[qi]
 	progress.text = "Snippet %d of %d          Score: %d" % [qi + 1, QS.size(), score]
-	code_label.text = UI.highlight(q["code"])
-	feedback.text = "n is the size of the input. Pick how the step count grows."
+	code_label.text = UI.highlight(Traces.code_for(q["trace"]))
+	step_btn.visible = true
+	feedback.text = "n is the size of the input. Pick how the step count grows (keys 1 to 6 work too), or step through the code first."
 	feedback.add_theme_color_override("font_color", UI.DIM)
 	at1000.text = ""
 	next_btn.visible = false
@@ -127,6 +144,7 @@ func _next() -> void:
 	at1000.text = ""
 	for b in buttons:
 		b.visible = false
+	step_btn.visible = false
 	next_btn.text = "Play again"
 	answered = -1
 

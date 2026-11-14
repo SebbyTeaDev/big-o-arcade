@@ -37,7 +37,7 @@ func _ready() -> void:
 	size_btn = UI.button(self, "", Vector2(672, 92), Vector2(200, 40), _resize, 15, tint)
 	UI.button(self, "Clear", Vector2(880, 92), Vector2(74, 40), _clear, 15, tint)
 	goal_l = UI.label(self, "", Vector2(972, 88), 13, UI.DIM, 280)
-	msg = UI.label(self, "", Vector2(40, 144), 15, UI.INK, 900)
+	msg = UI.label(self, "", Vector2(40, 142), 14, UI.INK, 910)
 	_reset_table()
 	_say("Each key goes to slot  key % table size. That jump is one step, which is where O(1) comes from. Trouble starts when two keys want the same slot. Insert some keys, then click one to look it up.")
 

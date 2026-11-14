@@ -48,17 +48,21 @@ static func font(kind: String = "body") -> Font:
 
 static func label(parent: Node, text: String, pos: Vector2, font_size: int = 18, color: Color = INK, width: float = 0.0, kind: String = "") -> Label:
 	var l := Label.new()
-	l.text = text
 	l.position = pos
 	l.add_theme_font_size_override("font_size", font_size)
 	l.add_theme_color_override("font_color", color)
 	if kind != "":
 		l.add_theme_font_override("font", font(kind))
+	# Wrapping has to be switched on before the text goes in, or a long first text
+	# stretches the label to its unwrapped width and it never shrinks back.
 	if width > 0.0:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size = Vector2(width, 0)
 		l.size = Vector2(width, 0)
+	l.text = text
 	parent.add_child(l)
+	if width > 0.0:
+		l.size = Vector2(width, 0)
 	return l
 
 

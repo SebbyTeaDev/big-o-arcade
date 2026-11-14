@@ -2,12 +2,16 @@ extends Control
 # Base class for every level: header, time, sound, particles, shake, toast, stars.
 
 const UI = preload("res://ui.gd")
+const World = preload("res://real_world.gd")
+const Intro = preload("res://intro.gd")
+const Stepper = preload("res://code_stepper.gd")
 
 var main
 var meta := {}
 var t := 0.0
 var tint: Color = UI.ACCENT
 var _celebrated := 0
+var overlay: Control = null     # the briefing or the code viewer, when one is open
 
 
 func _init() -> void:
@@ -19,6 +23,36 @@ func header(sub: String) -> void:
 	UI.button(self, "< Menu", Vector2(24, 18), Vector2(96, 38), func(): main.show_menu(), 15)
 	UI.label(self, meta.get("name", ""), Vector2(140, 6), 30, UI.INK, 0.0, "title")
 	UI.label(self, sub, Vector2(142, 48), 15, tint)
+	var id: String = meta.get("id", "")
+	if World.INFO.has(id):
+		var traces: Array = World.INFO[id]["traces"]
+		if traces.is_empty():
+			UI.button(self, "Real world", Vector2(1126, 18), Vector2(116, 38), show_intro, 14, tint)
+		else:
+			UI.button(self, "Real world", Vector2(1002, 18), Vector2(116, 38), show_intro, 14, tint)
+			UI.button(self, "See the code", Vector2(1126, 18), Vector2(116, 38), open_code.bind(traces), 14, tint)
+		if main.first_visit(id):
+			show_intro.call_deferred()
+
+
+func show_intro() -> void:
+	if overlay != null:
+		return
+	var o: Control = Intro.new()
+	o.level = self
+	overlay = o
+	add_child(o)
+
+
+func open_code(ids: Array, reveal: bool = true) -> void:
+	if overlay != null or ids.is_empty():
+		return
+	var s: Control = Stepper.new()
+	s.level = self
+	s.ids = ids
+	s.reveal = reveal
+	overlay = s
+	add_child(s)
 
 
 func _process(delta: float) -> void:
@@ -32,8 +66,14 @@ func tick(_delta: float) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+	if not (event is InputEventKey and event.pressed) or overlay != null:
+		return
+	if event.keycode == KEY_ESCAPE:
 		main.show_menu()
+	elif event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+		var nb = get("next_btn")
+		if nb is Button and nb.visible and not nb.disabled:
+			nb.pressed.emit()
 
 
 func sfx(sound: String, pitch: float = 1.0) -> void:
@@ -48,7 +88,7 @@ func finish(stars: int = 3, celebrate: bool = true) -> void:
 		_celebrated = stars
 		_toast(stars)
 		main.fanfare()
-		burst(Vector2(1090, 60), UI.WARN, 40)
+		burst(Vector2(760, 44), UI.WARN, 40)
 
 
 func burst(pos: Vector2, c: Color, amount: int = 24) -> void:
@@ -91,7 +131,7 @@ func float_text(pos: Vector2, s: String, c: Color, font_size: int = 20) -> void:
 
 func _toast(stars: int) -> void:
 	var c := Control.new()
-	c.position = Vector2(930, 20)
+	c.position = Vector2(600, 10)
 	c.size = Vector2(320, 64)
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	c.draw.connect(func():

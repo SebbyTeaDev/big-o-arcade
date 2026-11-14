@@ -2,6 +2,7 @@ extends Control
 
 const UI = preload("res://ui.gd")
 const MenuCard = preload("res://menu_card.gd")
+const Traces = preload("res://traces.gd")
 const SAVE_PATH := "user://big_o_arcade.json"
 
 const LEVELS := [
@@ -58,13 +59,15 @@ void fragment() {
 }
 """
 
-var save := {"stars": {}, "mute": false}
+var save := {"stars": {}, "seen": {}, "mute": false}
 var current: Control = null
 var bg_mat: ShaderMaterial
 var players: Array = []
 var sounds := {}
 var _pi := 0
 var _testing := false
+var _no_intro := false
+var _reset_armed := false
 var _tint_now: Color = UI.ACCENT
 
 
@@ -174,6 +177,8 @@ func _load() -> void:
 	if parsed is Dictionary:
 		if parsed.get("stars") is Dictionary:
 			save["stars"] = parsed["stars"]
+		if parsed.get("seen") is Dictionary:
+			save["seen"] = parsed["seen"]
 		save["mute"] = bool(parsed.get("mute", false))
 
 
@@ -187,6 +192,15 @@ func _store() -> void:
 
 func stars_for(id: String) -> int:
 	return int(save["stars"].get(id, 0))
+
+
+# True the first time a level is opened, so its briefing can show itself once.
+func first_visit(id: String) -> bool:
+	if _no_intro or save["seen"].has(id):
+		return false
+	save["seen"][id] = true
+	_store()
+	return true
 
 
 func mark_done(id: String, stars: int) -> void:
@@ -238,16 +252,44 @@ func show_menu() -> void:
 	for lv in LEVELS:
 		total += stars_for(lv["id"])
 	total += stars_for("boss")
-	var sl := UI.label(m, "%d / %d stars" % [total, (LEVELS.size() + 1) * 3], Vector2(880, 34), 20, UI.hot(UI.WARN, 1.3), 0.0, "title")
+	var sl := UI.label(m, "%d / %d stars" % [total, (LEVELS.size() + 1) * 3], Vector2(640, 34), 20, UI.hot(UI.WARN, 1.3), 0.0, "title")
 	sl.size = Vector2(200, 30)
 	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	UI.button(m, "Sound: off" if save["mute"] else "Sound: on", Vector2(1100, 28), Vector2(132, 38), _toggle_mute, 15)
+	_reset_armed = false
+	var rb := UI.button(m, "Reset progress", Vector2(858, 28), Vector2(132, 38), func(): pass, 14)
+	rb.pressed.connect(_reset.bind(rb))
+	UI.button(m, "Fullscreen", Vector2(998, 28), Vector2(108, 38), _toggle_fullscreen, 14)
+	UI.button(m, "Sound: off" if save["mute"] else "Sound: on", Vector2(1114, 28), Vector2(120, 38), _toggle_mute, 14)
+	var hint := UI.label(m, "New here? Start at 01.      Esc: menu      F: fullscreen", Vector2(640, 78), 13, UI.DIM)
+	hint.size = Vector2(594, 20)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	for i in LEVELS.size():
 		var r := Rect2(46 + (i % 4) * 300, 118 + (i / 4) * 156, 288, 144)
 		_card(m, LEVELS[i], r, "%02d   " % (i + 1), true)
 	_card(m, BOSS, Rect2(46, 590, 788, 112), "", true)
 	_card(m, SHEET, Rect2(846, 590, 388, 112), "", false)
 	_swap(m)
+
+
+func _reset(b: Button) -> void:
+	if not _reset_armed:
+		_reset_armed = true
+		b.text = "Really reset?"
+		return
+	save["stars"] = {}
+	save["seen"] = {}
+	_store()
+	show_menu()
+
+
+func _toggle_fullscreen() -> void:
+	var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_F, KEY_F11]:
+		_toggle_fullscreen()
 
 
 func _toggle_mute() -> void:
@@ -284,7 +326,8 @@ func wait(sec: float) -> void:
 
 func _shots(dir: String, only: String) -> void:
 	_testing = true
-	save = {"stars": {"search": 3, "bigo": 2, "tree": 1}, "mute": true}
+	_no_intro = true
+	save = {"stars": {"search": 3, "bigo": 2, "tree": 1}, "seen": {}, "mute": true}
 	show_menu()
 	await wait(0.8)
 	if only == "":
@@ -302,6 +345,38 @@ func _shots(dir: String, only: String) -> void:
 			await current.demo()
 		await wait(1.2)
 		await _snap(dir + "/%02d_%s.png" % [i + 1, meta["id"]])
+	if only == "" or only == "stepper":
+		start(LEVELS[1])
+		await wait(0.5)
+		current.open_code(["dedupe"])
+		await wait(0.4)
+		current.overlay._pick_size(1)
+		current.overlay._toggle_play()
+		await wait(10.5)
+		await _snap(dir + "/15_stepper.png")
+	if only == "intros":
+		for meta in LEVELS + [BOSS]:
+			start(meta)
+			await wait(0.4)
+			current.show_intro()
+			await wait(2.6)
+			await _snap(dir + "/intro_%s.png" % meta["id"])
+	if only == "steppers":
+		for id in ["fib", "nested", "bsearch", "bfs", "insertion", "shift", "percolate", "unionfind"]:
+			start(LEVELS[1])
+			await wait(0.4)
+			current.open_code([id])
+			await wait(0.3)
+			for k in int(current.overlay.tr.steps.size() * 0.6):
+				current.overlay._step(1)
+			await wait(0.4)
+			await _snap(dir + "/step_%s.png" % id)
+	if only == "" or only == "intro":
+		start(LEVELS[6])
+		await wait(0.5)
+		current.show_intro()
+		await wait(3.2)
+		await _snap(dir + "/16_intro.png")
 	get_tree().quit()
 
 
@@ -321,23 +396,44 @@ func _snap(path: String) -> void:
 
 
 # Random-input smoke test: godot --path . -- --monkey
+# Builds every code trace at every size, then throws random clicks and keys at every screen.
 func _monkey() -> void:
 	_testing = true
-	save = {"stars": {}, "mute": true}
+	save = {"stars": {}, "seen": {}, "mute": true}
+	for id in Traces.INFO:
+		var line := "TRACE %s:" % id
+		for n in Traces.INFO[id]["sizes"]:
+			var tr = Traces.build(id, n)
+			assert(not tr.steps.is_empty() and tr.code != "")
+			var lines: int = tr.code.count("\n") + 1
+			for st in tr.steps:
+				assert(int(st["line"]) < lines, "%s points past the end of its code" % id)
+			line += "  n=%d -> %d steps (%d lines run)" % [n, tr.ops, tr.steps.size()]
+		print(line)
 	Engine.time_scale = 6.0
 	var all: Array = LEVELS + [BOSS, SHEET]
 	for meta in all:
 		print("MONKEY ", meta["id"])
 		start(meta)
 		await wait(0.4)
-		for i in 900:
+		for i in 1100:
+			var host: Node = current
+			if current.get("overlay") != null:
+				host = current.overlay
 			var btns: Array = []
-			for c in current.get_children():
+			for c in host.get_children():
 				if c is Button and c.visible and not c.disabled and c.text != "< Menu":
 					btns.append(c)
-			if randf() < 0.7 and not btns.is_empty():
+			var roll := randf()
+			if roll < 0.68 and not btns.is_empty():
 				var b: Button = btns[randi() % btns.size()]
-				await click(b.position + b.size / 2.0)
+				await click(b.global_position + b.size / 2.0)
+			elif roll < 0.76:
+				var e := InputEventKey.new()
+				e.keycode = [KEY_RIGHT, KEY_LEFT, KEY_SPACE, KEY_ENTER, KEY_3][randi() % 5]
+				e.pressed = true
+				get_viewport().push_input(e)
+				await get_tree().process_frame
 			else:
 				await click(Vector2(randf_range(40, 1240), randf_range(150, 700)))
 			if i % 10 == 0:

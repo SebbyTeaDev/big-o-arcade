@@ -3,9 +3,9 @@ extends "res://levels/level_base.gd"
 
 const GW := 24
 const GH := 12
-const CS := 40.0
+const CS := 39.0
 const X0 := 40.0
-const Y0 := 190.0
+const Y0 := 208.0
 const PX := 1024.0
 
 var edges: Array = []
