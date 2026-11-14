@@ -1,22 +1,21 @@
-# Builds the Windows and macOS downloads.
-# Push a tag like v1.0.2 and the builds are attached to a GitHub Release with that name.
-# "Run workflow" in the Actions tab does a test build without publishing anything.
+# Optional cloud build of the Windows and macOS downloads. It only runs when you start it by
+# hand from the Actions tab ("Run workflow"), and it never publishes: download the result
+# from the run's artifacts. Official releases are built and signed locally with
+# tools/release.sh, so this is here as a fallback and for contributors without a Mac.
 #
 # macOS signing: when the five secrets listed under "sign-macos" are set, the app is signed
 # with a Developer ID certificate, notarized by Apple and stapled. Without them the build
-# falls back to an ad-hoc signature, which Gatekeeper blocks on first launch.
+# keeps an ad-hoc signature, which Gatekeeper blocks on first launch.
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  GODOT_VERSION: "4.7.1"
+  GODOT_VERSION: "4.7.2"
 
 jobs:
   export:
@@ -164,32 +163,3 @@ jobs:
           name: macos
           path: out/BigOArcade-macOS.zip
           if-no-files-found: error
-
-  publish:
-    needs: [export, sign-macos]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows
-          path: dist
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: macos
-          path: dist
-
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ls -la dist
-          gh release create "$GITHUB_REF_NAME" \
-            dist/BigOArcade-Windows.zip dist/BigOArcade-macOS.zip \
-            --title "Big-O Arcade $GITHUB_REF_NAME" \
-            --notes-file .github/RELEASE_NOTES.md

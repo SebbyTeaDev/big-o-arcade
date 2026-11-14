@@ -25,16 +25,12 @@ Grab the latest build from the **[Releases page](https://github.com/SebbyTeaDev/
 
 | Platform | File | First launch |
 |---|---|---|
+| macOS 11 or later, Apple Silicon and Intel | `BigOArcade-macOS.zip` | Unzip and open **Big-O Arcade**. It is signed and notarized by Apple, so it opens after the usual "downloaded from the internet" confirmation. |
 | Windows 10 or 11, 64-bit | `BigOArcade-Windows.zip` | Unzip and run `BigOArcade.exe`. If "Windows protected your PC" appears, click **More info**, then **Run anyway**. |
-| macOS 11 or later, Apple Silicon and Intel | `BigOArcade-macOS.zip` | Unzip and open **Big-O Arcade**. macOS will refuse the first time: go to **System Settings > Privacy & Security** and click **Open Anyway**. |
 
-The warnings appear because the builds are not signed with a paid developer certificate. If macOS says the app is damaged, your browser has quarantined it; clear the flag and open it again:
+The Windows build is not code-signed, which is why Windows asks you to confirm.
 
-```bash
-xattr -dr com.apple.quarantine "Big-O Arcade.app"
-```
-
-The downloads are built by [a GitHub Actions workflow](.github/workflows/release.yml) straight from this repository, so you can see exactly what goes into them.
+The downloads are built from this repository by [`tools/release.sh`](tools/release.sh), so you can see exactly what goes into them.
 
 ## Run from source
 
@@ -47,7 +43,7 @@ godot --path big-o-arcade
 
 Or open `project.godot` in the Godot editor and press F5.
 
-Built and tested on Godot 4.7.1 on macOS, under both the Forward+ and Compatibility renderers. It uses HDR 2D with glow, so it wants a recent 4.x release. Older versions, Windows and Linux are untested.
+Built and tested on Godot 4.7.2 on macOS, under both the Forward+ and Compatibility renderers. It uses HDR 2D with glow, so it wants a recent 4.x release. Older versions, Windows and Linux are untested.
 
 | Input | Action |
 |---|---|
@@ -204,28 +200,22 @@ Neither mode touches your save file. The GIFs above were recorded by combining t
 
 ## Cutting a release
 
-Push a version tag and the workflow builds both platforms and attaches them to a new GitHub Release:
+Releases are built on a Mac with one script. It exports both platforms, signs the macOS app with a Developer ID certificate, has Apple notarize it, staples the ticket and checks that Gatekeeper accepts the result.
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+tools/release.sh             # build, sign and notarize into build/
+tools/release.sh --publish   # the same, then create the GitHub release
 ```
 
-To try a build without publishing, use **Run workflow** on the Release workflow in the Actions tab and download the artifact from the run.
+The version comes from `config/version` in `project.godot`. One-time setup, also described at the top of the script:
 
-### Signing the macOS build
+1. Install Godot's export templates (Editor > Manage Export Templates).
+2. Have a "Developer ID Application" certificate, with its private key, in your keychain.
+3. Store a notarization login in the keychain with `xcrun notarytool store-credentials big-o-arcade`.
 
-The workflow signs the app with a Developer ID certificate, has Apple notarize it and staples the ticket, as long as these five repository secrets exist. Without them it falls back to an ad-hoc signature.
+The signing key and the notarization password stay in the keychain. Nothing secret is stored in the repository or on GitHub.
 
-| Secret | What it is |
-|---|---|
-| `MACOS_CERTIFICATE_P12` | A "Developer ID Application" certificate exported as `.p12`, base64-encoded |
-| `MACOS_CERTIFICATE_PASSWORD` | The password chosen when exporting the `.p12` |
-| `APPLE_ID` | The Apple ID email of the developer account |
-| `APPLE_APP_PASSWORD` | An app-specific password for that Apple ID |
-| `APPLE_TEAM_ID` | The 10-character team ID of the developer account |
-
-The Windows build is not code-signed yet.
+There is also [a GitHub Actions workflow](.github/workflows/release.yml) that builds both platforms in the cloud. It only runs when started by hand and never publishes.
 
 ## Simplifications
 
