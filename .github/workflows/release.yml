@@ -1,6 +1,10 @@
 # Builds the Windows and macOS downloads.
-# Push a tag like v1.0.1 and the builds are attached to a GitHub Release with that name.
+# Push a tag like v1.0.2 and the builds are attached to a GitHub Release with that name.
 # "Run workflow" in the Actions tab does a test build without publishing anything.
+#
+# macOS signing: when the five secrets listed under "sign-macos" are set, the app is signed
+# with a Developer ID certificate, notarized by Apple and stapled. Without them the build
+# falls back to an ad-hoc signature, which Gatekeeper blocks on first launch.
 name: Release
 
 on:
@@ -9,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   GODOT_VERSION: "4.7.1"
@@ -48,28 +52,144 @@ jobs:
           godot --headless --path . --export-release "macOS" build/macos/BigOArcade-macOS.zip
           test -s build/macos/BigOArcade-macOS.zip
 
-      - name: Package
+      - name: Package Windows
         run: |
           cp LICENSE build/windows/LICENSE.txt
           (cd build/windows && zip -q ../BigOArcade-Windows.zip BigOArcade.exe LICENSE.txt)
-          mv build/macos/BigOArcade-macOS.zip build/BigOArcade-macOS.zip
-          ls -la build
-          unzip -l build/BigOArcade-macOS.zip | tail -n 25
+          ls -la build build/macos
 
       - uses: actions/upload-artifact@v4
         with:
-          name: big-o-arcade-builds
-          path: |
-            build/BigOArcade-Windows.zip
-            build/BigOArcade-macOS.zip
+          name: windows
+          path: build/BigOArcade-Windows.zip
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-exported
+          path: build/macos/BigOArcade-macOS.zip
+          if-no-files-found: error
+
+  # Signs with Apple's own tools on a Mac runner. Needs these repository secrets:
+  #   MACOS_CERTIFICATE_P12        base64 of a "Developer ID Application" certificate exported as .p12
+  #   MACOS_CERTIFICATE_PASSWORD   the password chosen when exporting that .p12
+  #   APPLE_ID                     the Apple ID email of the developer account
+  #   APPLE_APP_PASSWORD           an app-specific password for that Apple ID
+  #   APPLE_TEAM_ID                the 10-character team ID of the developer account
+  sign-macos:
+    needs: export
+    runs-on: macos-latest
+    env:
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-exported
+
+      - name: Sign, notarize and staple
+        run: |
+          set -euo pipefail
+          mkdir -p out app
+          ditto -x -k BigOArcade-macOS.zip app
+          APP="app/Big-O Arcade.app"
+          test -d "$APP"
+
+          if [ -z "${MACOS_CERTIFICATE_P12}" ]; then
+            echo "::warning::No signing secrets are set, so this build keeps its ad-hoc signature. Gatekeeper will block it on first launch."
+            cp BigOArcade-macOS.zip out/BigOArcade-macOS.zip
+            exit 0
+          fi
+          for name in MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is missing. All five signing secrets are needed."
+              exit 1
+            fi
+          done
+
+          # A throwaway keychain that exists only for this job.
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -n 1 | awk -F'"' '{print $2}')"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::The certificate is not a 'Developer ID Application' certificate. That is the only kind Gatekeeper accepts outside the App Store."
+            exit 1
+          fi
+          echo "::add-mask::$IDENTITY"
+
+          # Hardened runtime and a secure timestamp are both required for notarization.
+          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$APP"
+          codesign --verify --deep --strict "$APP"
+
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 30m --output-format json > "$RUNNER_TEMP/notary.json" || true
+          STATUS="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status",""))' "$RUNNER_TEMP/notary.json" 2>/dev/null || true)"
+          if [ -z "$STATUS" ] && grep -q '"status" *: *"Accepted"' "$RUNNER_TEMP/notary.json" 2>/dev/null; then
+            STATUS="Accepted"
+          fi
+          echo "Notarization status: ${STATUS:-unknown}"
+          if [ "$STATUS" != "Accepted" ]; then
+            SUBMISSION="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$RUNNER_TEMP/notary.json" 2>/dev/null || true)"
+            if [ -n "$SUBMISSION" ]; then
+              xcrun notarytool log "$SUBMISSION" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" || true
+            fi
+            echo "::error::Apple did not accept the build for notarization."
+            exit 1
+          fi
+
+          # Attach the notarization ticket so the first launch works offline too.
+          xcrun stapler staple "$APP"
+          spctl --assess --type execute "$APP"
+          echo "Gatekeeper accepts the signed app."
+
+          ditto -c -k --keepParent "$APP" out/BigOArcade-macOS.zip
+          security delete-keychain "$KEYCHAIN"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/BigOArcade-macOS.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [export, sign-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos
+          path: dist
+
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ls -la dist
           gh release create "$GITHUB_REF_NAME" \
-            build/BigOArcade-Windows.zip build/BigOArcade-macOS.zip \
+            dist/BigOArcade-Windows.zip dist/BigOArcade-macOS.zip \
             --title "Big-O Arcade $GITHUB_REF_NAME" \
             --notes-file .github/RELEASE_NOTES.md

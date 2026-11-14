@@ -213,6 +213,20 @@ git push origin v1.0.1
 
 To try a build without publishing, use **Run workflow** on the Release workflow in the Actions tab and download the artifact from the run.
 
+### Signing the macOS build
+
+The workflow signs the app with a Developer ID certificate, has Apple notarize it and staples the ticket, as long as these five repository secrets exist. Without them it falls back to an ad-hoc signature.
+
+| Secret | What it is |
+|---|---|
+| `MACOS_CERTIFICATE_P12` | A "Developer ID Application" certificate exported as `.p12`, base64-encoded |
+| `MACOS_CERTIFICATE_PASSWORD` | The password chosen when exporting the `.p12` |
+| `APPLE_ID` | The Apple ID email of the developer account |
+| `APPLE_APP_PASSWORD` | An app-specific password for that Apple ID |
+| `APPLE_TEAM_ID` | The 10-character team ID of the developer account |
+
+The Windows build is not code-signed yet.
+
 ## Simplifications
 
 The numbers in the game are meant to build intuition, so a few things are rounded off:
