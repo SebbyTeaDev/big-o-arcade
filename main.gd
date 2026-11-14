@@ -123,6 +123,13 @@ func _ready() -> void:
 			_shots(a.trim_prefix("--shots="), only)
 
 
+# Fonts, the shared style box and the click callback live in static variables on ui.gd.
+# Left alone they are freed after the engine's servers have shut down, which aborts the
+# process on exit, so release them while the engine is still up.
+func _exit_tree() -> void:
+	UI.release()
+
+
 func _compat() -> bool:
 	return RenderingServer.get_current_rendering_method() == "gl_compatibility"
 

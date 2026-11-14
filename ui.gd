@@ -21,6 +21,13 @@ static var _fonts: Dictionary = {}
 static var _re: RegEx = null
 
 
+static func release() -> void:
+	on_click = Callable()
+	_fonts.clear()
+	_sb = null
+	_re = null
+
+
 static func hot(c: Color, k: float = 1.8) -> Color:
 	return Color(c.r * k, c.g * k, c.b * k, c.a)
 

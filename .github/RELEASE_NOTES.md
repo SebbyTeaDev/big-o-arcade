@@ -27,3 +27,8 @@ These builds are not code-signed with a paid developer certificate, so both syst
 Prefer not to run an unsigned build? Install [Godot 4](https://godotengine.org/download), clone the repository and run `godot --path .` instead.
 
 Progress is saved on your machine. Nothing is sent anywhere.
+
+## Changes
+
+- **1.0.1** fixes a crash that happened every time the game was closed.
+- **1.0.0** first release.
