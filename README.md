@@ -19,9 +19,26 @@ I wanted a foundation in data structures and algorithms that was good enough to 
 
 Each level takes one idea and makes you do it with your hands: flip the cards, make the swap, pick the structure, paint the wall. The explanation comes after you have felt the cost.
 
-## Run it
+## Download
 
-You need [Godot 4](https://godotengine.org/download). There is nothing to build and no assets to import.
+Grab the latest build from the **[Releases page](https://github.com/SebbyTeaDev/big-o-arcade/releases/latest)**. No install and no Godot needed.
+
+| Platform | File | First launch |
+|---|---|---|
+| Windows 10 or 11, 64-bit | `BigOArcade-Windows.zip` | Unzip and run `BigOArcade.exe`. If "Windows protected your PC" appears, click **More info**, then **Run anyway**. |
+| macOS 11 or later, Apple Silicon and Intel | `BigOArcade-macOS.zip` | Unzip and open **Big-O Arcade**. macOS will refuse the first time: go to **System Settings > Privacy & Security** and click **Open Anyway**. |
+
+The warnings appear because the builds are not signed with a paid developer certificate. If macOS says the app is damaged, your browser has quarantined it; clear the flag and open it again:
+
+```bash
+xattr -dr com.apple.quarantine "Big-O Arcade.app"
+```
+
+The downloads are built by [a GitHub Actions workflow](.github/workflows/release.yml) straight from this repository, so you can see exactly what goes into them.
+
+## Run from source
+
+If you would rather not run an unsigned build, or you want to change the game, you need [Godot 4](https://godotengine.org/download). There is nothing to build and no assets to import.
 
 ```bash
 git clone https://github.com/SebbyTeaDev/big-o-arcade.git
@@ -141,6 +158,7 @@ traces.gd            the 30 runnable code snippets
 code_stepper.gd      the step-through code viewer
 real_world.gd        per-level briefing text and illustrations
 intro.gd             the briefing overlay
+export_presets.cfg   Windows and macOS export settings
 levels/
   level_base.gd      header, timing, particles, shake, star toast, overlays
   search.gd  bigo.gd  listarr.gd  stackq.gd  sortlab.gd  recursion.gd
@@ -183,6 +201,17 @@ godot --path . -- --shots=/some/folder --only=graph
 ```
 
 Neither mode touches your save file. The GIFs above were recorded by combining the demo mode with Godot's `--write-movie`.
+
+## Cutting a release
+
+Push a version tag and the workflow builds both platforms and attaches them to a new GitHub Release:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+To try a build without publishing, use **Run workflow** on the Release workflow in the Actions tab and download the artifact from the run.
 
 ## Simplifications
 

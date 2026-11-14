@@ -4,6 +4,9 @@ config_version=5
 [application]
 
 config/name="Big-O Arcade"
+config/description="A game for building intuition about data structures, algorithms and Big-O."
+config/version="1.0.0"
+config/icon="res://icon.png"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.3")
 
@@ -21,4 +24,5 @@ window/stretch/aspect="keep"
 renderer/rendering_method="forward_plus"
 viewport/hdr_2d=true
 anti_aliasing/quality/msaa_2d=2
+textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0.03, 0.035, 0.06, 1)

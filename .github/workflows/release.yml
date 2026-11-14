@@ -1,0 +1,75 @@
+# Builds the Windows and macOS downloads.
+# Push a tag like v1.0.1 and the builds are attached to a GitHub Release with that name.
+# "Run workflow" in the Actions tab does a test build without publishing anything.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.1"
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and its export templates
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q godot.zip -d "$RUNNER_TEMP/godot"
+          sudo mv "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          unzip -q templates.tpz -d "$RUNNER_TEMP"
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          mv "$RUNNER_TEMP/templates" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          rm godot.zip templates.tpz
+          godot --version
+
+      - name: Import the project
+        run: godot --headless --path . --import
+
+      - name: Export Windows
+        run: |
+          mkdir -p build/windows
+          godot --headless --path . --export-release "Windows" build/windows/BigOArcade.exe
+          test -s build/windows/BigOArcade.exe
+
+      - name: Export macOS
+        run: |
+          mkdir -p build/macos
+          godot --headless --path . --export-release "macOS" build/macos/BigOArcade-macOS.zip
+          test -s build/macos/BigOArcade-macOS.zip
+
+      - name: Package
+        run: |
+          cp LICENSE build/windows/LICENSE.txt
+          (cd build/windows && zip -q ../BigOArcade-Windows.zip BigOArcade.exe LICENSE.txt)
+          mv build/macos/BigOArcade-macOS.zip build/BigOArcade-macOS.zip
+          ls -la build
+          unzip -l build/BigOArcade-macOS.zip | tail -n 25
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: big-o-arcade-builds
+          path: |
+            build/BigOArcade-Windows.zip
+            build/BigOArcade-macOS.zip
+          if-no-files-found: error
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            build/BigOArcade-Windows.zip build/BigOArcade-macOS.zip \
+            --title "Big-O Arcade $GITHUB_REF_NAME" \
+            --notes-file .github/RELEASE_NOTES.md
